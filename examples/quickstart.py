@@ -3,9 +3,11 @@
 
     python examples/quickstart.py
 
-Deliberately tiny (2-3 operand problems, small model, ~120 steps) so it finishes
-in about a minute on a laptop CPU and clearly demonstrates the full loop:
-sample -> reward -> group-relative advantage -> policy update.
+Deliberately tiny (single-operation problems, small model, 160 steps) so it
+finishes in a couple of minutes on a laptop CPU and clearly demonstrates the full
+loop: sample -> reward -> group-relative advantage -> policy update. Watch the
+mean reward climb from negative to ~0.5 as the policy goes from random garbage to
+clean, well-formed answers -- the clearest sign pure RL is working.
 """
 
 import os

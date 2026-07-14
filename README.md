@@ -43,6 +43,21 @@ The task is deliberately small and **verifiable** — multi-operand arithmetic �
 because a clean, computable reward is exactly where pure RL shines, and it has a
 built-in difficulty knob that makes "reason only when it helps" meaningful.
 
+## The pure-RL loop at a glance
+
+```mermaid
+flowchart LR
+    P["Prompt<br/>(verifiable task)"] --> G["Sample a GROUP<br/>of G completions<br/>from the policy πθ"]
+    G --> R["Score each:<br/>correctness + format<br/>+ brevity"]
+    R --> A["Group-relative advantage<br/>Aᵢ = (rᵢ − mean) / std<br/><i>the group is the baseline</i>"]
+    A --> U["Clipped policy-gradient<br/>update (+ entropy, ± KL)<br/>via our own autograd"]
+    U -->|"πθ improves"| G
+    A -.->|"emerges from reward"| H["Dynamic hybrid reasoning:<br/>fast ⟷ &lt;think&gt; per problem"]
+```
+
+No value network, no supervised data, no reward model — just a verifier and
+relative comparison inside each group.
+
 ## The 10-line heart of it
 
 ```python
@@ -63,7 +78,7 @@ teachable**.
 ```bash
 pip install -r requirements.txt
 
-# ~1 minute: watch pure RL learn from scratch, then see sample generations
+# a couple of minutes: watch pure RL learn from scratch, then see sample generations
 python examples/quickstart.py
 
 # Full training run, saves a checkpoint under runs/demo/
@@ -120,17 +135,33 @@ docs/           the 7-part conceptual walkthrough
 
 Pure RL from random init climbs a ladder (this is the whole story in one place):
 
-1. **Structure first.** The policy learns to emit a clean, non-empty
-   `<answer> … </answer> <eos>`. `gen_len` grows out of degenerate short outputs.
-2. **Correctness lifts off.** Once structure is reliable, the large correctness
-   bonus pulls answers toward *right*. `accuracy` rises (often after a plateau —
-   pure RL from scratch is genuinely bumpy, and that's part of the lesson).
-3. **Behavior tightens.** The brevity penalty trims needless tokens on easy
-   problems; the difficulty spread makes reasoning pay off on hard ones, so
-   `reasoning_rate` self-sorts by difficulty.
+1. **Structure first (robust, every run).** In a few dozen steps the policy goes
+   from emitting random garbage — malformed, non-terminating, `0%` parseable — to
+   clean, well-formed `<answer> … </answer> <eos>`. Mean reward climbs from
+   *negative* to roughly `+0.5`, and `gen_len` settles onto tidy direct answers.
+   This is the clearest, most reproducible signal that pure RL is working.
+2. **Correctness lifts above chance.** Once structure is solved, the large
+   correctness bonus pulls answers toward *right*. Accuracy rises well above the
+   random-guess baseline (e.g. from `~0` at init to several× chance) — though from
+   *random weights* it's bumpy: individual steps spike to 30–50% correct, then the
+   policy partially collapses and recovers. That instability is **exploration
+   collapse**, a real and important pure-RL phenomenon (the group briefly loses
+   answer diversity, so GRPO loses the variance it needs — see
+   [doc 2 §2.2](docs/02_pure_rl_grpo.md) and the entropy bonus that fights it).
+3. **Behavior tightens.** The brevity penalty trims needless tokens; on a
+   difficulty spread, reasoning is rewarded only where it pays, so `reasoning_rate`
+   sorts by difficulty and the confidence-gated controller trades compute for
+   accuracy on demand.
 
-> Reproduce the numbers for your machine with `make train && make evaluate`.
-> Results vary by seed — pure RL from random weights is stochastic by nature.
+> **On the numbers, honestly.** This is a *teaching* setup: a
+> tens-of-thousands-parameter model learning a symbolic mapping from a **sparse
+> reward** and **random initialization** — the hardest possible starting point.
+> The mechanisms are exercised end-to-end and the format/reward gains are rock
+> solid; robust high-accuracy *mastery* is exactly what a **pretrained base model**
+> buys you, which is why real pure-RL (R1-Zero) starts there.
+> [doc 6](docs/06_scaling_to_real_models.md) spells out what changes at scale.
+> Reproduce on your machine with `make train && make evaluate`; results vary by
+> seed by design.
 
 ## Honest caveats
 
