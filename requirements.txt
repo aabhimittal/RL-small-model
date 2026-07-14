@@ -1,0 +1,7 @@
+# The core library depends on NumPy only -- everything (autograd, TinyGPT,
+# GRPO, hybrid reasoning) is implemented from scratch so the whole stack is
+# readable and runs on a CPU.
+numpy>=1.23
+
+# Dev / testing only:
+pytest>=7.0
