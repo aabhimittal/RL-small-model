@@ -102,6 +102,14 @@ def compute_reward(env: ArithmeticEnv, rollout: Rollout,
     # reward-hack: perfectly structured, perfectly empty, and a dead end.)
     well_formed = fmt["well_formed"] and parseable
 
+    # Correctness and proximity are paid ONLY for a clean, terminated answer.
+    # The verifier reads the *first* <answer> span, so without this gate the
+    # policy learns a second reward-hack: ramble endlessly and spray many answer
+    # spans so that an early one lands correct by chance. Requiring a well-formed,
+    # <eos>-terminated output makes that rambling worthless and forces a single
+    # clean answer. (Graded number-credit below still bootstraps from scratch.)
+    correct = correct and well_formed
+
     # Graded structural shaping -- partial credit that gives the from-scratch
     # policy a gradient to climb before it can ever produce a correct answer.
     shaping = 0.0
@@ -116,7 +124,7 @@ def compute_reward(env: ArithmeticEnv, rollout: Rollout,
         acc_term = cfg.correct_bonus
     else:
         acc_term = cfg.wrong_penalty
-        if cfg.proximity_coef > 0.0 and parseable:
+        if cfg.proximity_coef > 0.0 and well_formed:
             pred = env.extract_answer(gen)
             closeness = max(0.0, 1.0 - abs(pred - rollout.problem.answer) / cfg.proximity_scale)
             acc_term += cfg.proximity_coef * closeness

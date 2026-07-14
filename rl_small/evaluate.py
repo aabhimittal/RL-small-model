@@ -16,6 +16,7 @@ import numpy as np
 from .env import ArithmeticEnv
 from .hybrid import HybridConfig, auto_decode, dynamic_decode
 from .model import TinyGPT
+from .rewards import analyze_format
 from .sampling import Rollout, generate
 from .tokenizer import Tokenizer
 
@@ -66,8 +67,12 @@ def evaluate(model: TinyGPT, tok: Tokenizer, env: ArithmeticEnv,
                                max_new_tokens, rng, temperature=temperature,
                                force_first=force,
                                force_after_think=(mode == "think"))
+            # Count correct only for clean, well-formed outputs -- a rambling
+            # generation whose first <answer> span happens to be right does not
+            # count (mirrors the reward gate in rl_small.rewards).
+            wf = analyze_format(env, gen)["well_formed"]
             per_diff[difficulty].append({
-                "correct": float(env.is_correct(prob, gen)),
+                "correct": float(wf and env.is_correct(prob, gen)),
                 "reasoning": float(tok.think in gen),
                 "len": float(len(gen)),
             })

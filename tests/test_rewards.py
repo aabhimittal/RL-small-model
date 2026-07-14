@@ -42,6 +42,26 @@ def test_brevity_breaks_ties_between_correct_answers():
     assert rs > rl
 
 
+def test_rambling_with_correct_span_is_not_rewarded_as_correct():
+    # Regression: the verifier reads the FIRST <answer> span, so a rambling,
+    # non-terminated output that happens to contain a correct span must NOT get
+    # the correctness bonus -- otherwise the policy learns to spray answer spans.
+    tok = Tokenizer()
+    env = ArithmeticEnv(tok, seed=0)
+    p = Problem([3, 4], ["+"], 7, ["<bos>", "3", "+", "4", "="])
+    cfg = RewardConfig()
+
+    clean = _rollout(env, tok, p, ["<answer>", "7", "</answer>", "<eos>"])
+    rambling = _rollout(env, tok, p, ["<answer>", "7", "</answer>", "9",
+                                      "<answer>", "2", "</answer>", "1", "5"])
+    r_clean, parts_clean = compute_reward(env, clean, cfg)
+    r_ramble, parts_ramble = compute_reward(env, rambling, cfg)
+
+    assert parts_clean["correct"] == 1.0
+    assert parts_ramble["correct"] == 0.0   # not well-formed -> not counted
+    assert r_clean > r_ramble
+
+
 def test_format_analysis_flags():
     tok = Tokenizer()
     env = ArithmeticEnv(tok, seed=0)

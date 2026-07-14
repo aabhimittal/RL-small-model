@@ -21,6 +21,7 @@ from rl_small import (Tokenizer, ArithmeticEnv, TinyGPT, RewardConfig,
                       GRPOTrainer, GRPOConfig)
 from rl_small.evaluate import evaluate, format_eval
 from rl_small.sampling import generate
+from rl_small.utils import snapshot_params, restore_params
 
 tok = Tokenizer()
 env = ArithmeticEnv(tok, max_operand=9, difficulties=(2,), seed=0)
@@ -29,31 +30,44 @@ model = TinyGPT(tok.vocab_size, block_size=40, d_model=48, n_head=4,
 print(f"TinyGPT with {model.num_params():,} parameters")
 
 # proximity_coef>0 turns on the dense reward that makes from-scratch correctness
-# reliable and fast (see docs/04_reward_design.md).
+# reliable (see docs/04_reward_design.md). ppo_epochs=1 + a modest lr keep the
+# update to a plain, stable policy gradient (no overshoot -> no collapse).
 reward_cfg = RewardConfig(proximity_coef=0.3, proximity_scale=8.0)
 cfg = GRPOConfig(group_size=8, prompts_per_step=8, max_new_tokens=18,
-                 lr=5e-3, ppo_epochs=2, entropy_coef=0.025)
+                 lr=2e-3, ppo_epochs=1, entropy_coef=0.03)
 trainer = GRPOTrainer(model, tok, env, cfg, reward_cfg, seed=0)
+
+
+def eval_acc():
+    return evaluate(model, tok, env, n_per_difficulty=96, mode="auto")["overall"]["accuracy"]
+
 
 print("\nBefore training:")
 print(format_eval(evaluate(model, tok, env, n_per_difficulty=48, mode="auto")))
 
 print("\nTraining (pure RL, no labels)...")
-for step in range(1, 161):
+# Pure RL from random init is bumpy -- the policy can transiently collapse. We
+# keep the best-by-held-out-accuracy snapshot, a standard RL practice.
+best_acc, best_snap = -1.0, snapshot_params(model)
+for step in range(1, 201):
     s = trainer.step()
     if step % 20 == 0:
+        acc = eval_acc()
+        if acc > best_acc:
+            best_acc, best_snap = acc, snapshot_params(model)
         print(f"  step {step:3d} | reward={s['reward']:.3f} "
-              f"acc={s['accuracy']:.3f} reasoning={s['reasoning_rate']:.3f} "
-              f"len={s['gen_len']:.1f}")
+              f"train_acc={s['accuracy']:.3f} eval_acc={acc:.3f} "
+              f"len={s['gen_len']:.1f} (best={best_acc:.3f})")
 
-print("\nAfter training:")
-print(format_eval(evaluate(model, tok, env, n_per_difficulty=48, mode="auto")))
+restore_params(model, best_snap)   # use the best policy for the final showcase
+print(f"\nAfter training (best policy, eval_acc={best_acc:.3f}):")
+print(format_eval(evaluate(model, tok, env, n_per_difficulty=96, mode="auto")))
 
-print("\nSample generations:")
+print("\nSample generations (random init would score ~1/25 by chance):")
 rng = np.random.default_rng(1)
-for _ in range(5):
+for _ in range(8):
     p = env.sample()
-    gen = generate(model, tok, tok.encode(p.prompt_tokens), 32, rng, temperature=0.6)
+    gen = generate(model, tok, tok.encode(p.prompt_tokens), 32, rng, temperature=0.5)
     prompt = tok.decode(tok.encode(p.prompt_tokens)).replace("<bos>", "")
     print(f"  {prompt}{p.answer}  ->  {tok.decode(gen)}  "
           f"[{'OK' if env.is_correct(p, gen) else 'x'}]")

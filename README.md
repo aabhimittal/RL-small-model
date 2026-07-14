@@ -141,13 +141,16 @@ Pure RL from random init climbs a ladder (this is the whole story in one place):
    *negative* to roughly `+0.5`, and `gen_len` settles onto tidy direct answers.
    This is the clearest, most reproducible signal that pure RL is working.
 2. **Correctness lifts above chance.** Once structure is solved, the large
-   correctness bonus pulls answers toward *right*. Accuracy rises well above the
-   random-guess baseline (e.g. from `~0` at init to several× chance) — though from
-   *random weights* it's bumpy: individual steps spike to 30–50% correct, then the
-   policy partially collapses and recovers. That instability is **exploration
-   collapse**, a real and important pure-RL phenomenon (the group briefly loses
-   answer diversity, so GRPO loses the variance it needs — see
+   correctness bonus pulls answers toward *right*, to a few× the random-guess
+   baseline. Be clear-eyed about scale, though: this model **reliably nails the
+   format long before it masters the arithmetic**, and from *random weights* the
+   accuracy is bumpy — individual steps spike, then the policy partially collapses
+   toward a couple of constant answers and recovers. That instability is
+   **exploration collapse**, a real and important pure-RL phenomenon (the group
+   briefly loses answer diversity, so GRPO loses the variance it needs — see
    [doc 2 §2.2](docs/02_pure_rl_grpo.md) and the entropy bonus that fights it).
+   The training scripts keep the **best-by-held-out-accuracy** snapshot so the
+   final policy is a good one, not a post-collapse one.
 3. **Behavior tightens.** The brevity penalty trims needless tokens; on a
    difficulty spread, reasoning is rewarded only where it pays, so `reasoning_rate`
    sorts by difficulty and the confidence-gated controller trades compute for

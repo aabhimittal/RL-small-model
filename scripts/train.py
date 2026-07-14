@@ -23,7 +23,8 @@ from rl_small.model import TinyGPT
 from rl_small.rewards import RewardConfig
 from rl_small.grpo import GRPOTrainer, GRPOConfig
 from rl_small.evaluate import evaluate, format_eval
-from rl_small.utils import set_seed, save_checkpoint, format_stats, append_jsonl
+from rl_small.utils import (set_seed, save_checkpoint, format_stats,
+                            append_jsonl, snapshot_params, restore_params)
 
 
 def parse_args():
@@ -45,8 +46,8 @@ def parse_args():
     p.add_argument("--group-size", type=int, default=8)
     p.add_argument("--prompts-per-step", type=int, default=8)
     p.add_argument("--max-new-tokens", type=int, default=40)
-    p.add_argument("--lr", type=float, default=3e-3)
-    p.add_argument("--ppo-epochs", type=int, default=2)
+    p.add_argument("--lr", type=float, default=2e-3)
+    p.add_argument("--ppo-epochs", type=int, default=1)
     p.add_argument("--temperature", type=float, default=1.0)
     p.add_argument("--entropy-coef", type=float, default=0.03)
     # Dense proximity reward: partial credit for being close to the answer.
@@ -78,6 +79,8 @@ def main():
     reward_cfg = RewardConfig(proximity_coef=args.proximity_coef)
     trainer = GRPOTrainer(model, tok, env, cfg, reward_cfg, seed=args.seed)
 
+    # Pure RL from random init is bumpy; keep the best-by-eval snapshot.
+    best_acc, best_snap = -1.0, snapshot_params(model)
     for step in range(1, args.steps + 1):
         stats = trainer.step()
         if step % args.log_every == 0 or step == 1:
@@ -85,13 +88,18 @@ def main():
             append_jsonl(log_path, {"step": step, **stats})
         if step % args.eval_every == 0:
             res = evaluate(model, tok, env, n_per_difficulty=48, mode="auto")
-            print("  [eval/auto]\n    " + format_eval(res).replace("\n", "\n    "))
+            acc = res["overall"]["accuracy"]
+            if acc > best_acc:
+                best_acc, best_snap = acc, snapshot_params(model)
+            print(f"  [eval/auto | best={best_acc:.3f}]\n    "
+                  + format_eval(res).replace("\n", "\n    "))
 
+    restore_params(model, best_snap)   # checkpoint the best policy, not a post-collapse one
     ckpt = os.path.join(args.out, "policy.pkl")
-    save_checkpoint(model, ckpt, meta={"args": vars(args)})
-    print(f"\nSaved checkpoint -> {ckpt}")
+    save_checkpoint(model, ckpt, meta={"args": vars(args), "best_eval_acc": best_acc})
+    print(f"\nSaved best checkpoint (eval_acc={best_acc:.3f}) -> {ckpt}")
 
-    print("\nFinal evaluation (learned auto-gating):")
+    print("\nFinal evaluation (best policy, learned auto-gating):")
     print(format_eval(evaluate(model, tok, env, n_per_difficulty=96, mode="auto")))
 
 

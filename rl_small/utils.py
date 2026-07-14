@@ -15,6 +15,17 @@ def set_seed(seed: int) -> np.random.Generator:
     return np.random.default_rng(seed)
 
 
+def snapshot_params(model):
+    """Deep-copy the model's parameters (for best-so-far / early-stopping)."""
+    return [p.data.copy() for p in model.parameters()]
+
+
+def restore_params(model, snapshot):
+    """Load a snapshot from :func:`snapshot_params` back into the model."""
+    for p, saved in zip(model.parameters(), snapshot):
+        p.data[...] = saved
+
+
 def save_checkpoint(model, path: str, meta: Dict = None):
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     state = {
